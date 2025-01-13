@@ -1,7 +1,27 @@
-root_dir = "/global/cfs/cdirs/m3346/shlufl/IETS/nco_basecell_beta_strain/mae/"
-wave_dir = "6476401"
+from os import path
+import sys
+import subprocess
 
-incar = """
+# root dir
+root_dir = sys.argv[1];
+assert(root_dir[-1]=="/");
+existing_poscar = root_dir+"POSCAR"
+if(path.exists(existing_poscar)): pass
+else: raise Exception(existing_poscar+" must already exist!");
+existing_pot = root_dir+"POTCAR"
+if(path.exists(existing_pot)): pass
+else: raise Exception(existing_pot+" must already exist!");
+print(">>> pwd");
+subprocess.run(["pwd"]);
+print(">>> ls "+root_dir);
+subprocess.run(["ls", root_dir]);
+
+# wave dir
+wave_dir = sys.argv[2];
+assert("/" not in wave_dir);
+
+# this string becomes your INCAR file
+incar = """ 
 SYSTEM = vasp
 
 #### sym ####
@@ -17,23 +37,23 @@ ENCUT = 450
 LREAL = F
 
 #### parallelization ####
-KPAR = 4
-NCORE = 8
+KPAR = 1
+NCORE = 8 # if GPU, leave as is. if CPU, need to change
 
 #### electronic optimization ####
 EDIFF = 1E-8
 NELM = 90
 #NELMIN = 10
 #NELMDL = -8
-AMIX = 0.2
-AMIX_MAG = 0.4
+AMIX = 0.3    
+AMIX_MAG = 0.6
 AMIX_MIN = 0.05
 BMIX = 0.0001
 BMIX_MAG = 0.0001
 ALGO = All
 
 #### structural relaxation ####
-#NSW = 500
+#NSW = 1 # static calculation!
 #IBRION = 2
 #ISIF = 2
 #EDIFFG = -0.02
@@ -43,38 +63,18 @@ ALGO = All
 LASPH = T
 GGA_COMPAT = F
 
-#### magnetism: collinear spin ####
-#ISPIN = 2
-#MAGMOM = 3.0 3.0 3.0 1000*0.0
-#NUPDOWN = 9
-
-#### magnetism: noncollinear spin, SOC ####
+#### magnetism: noncollinear spin, SOC #### <--- this is what we are doing
 LSORBIT = T
-SAXIS = {sstring:s}
-MAGMOM = 0.0 0.0 -1.0 \\
-         0.0 0.0 -1.0 \\
-         0.0 0.0 -1.0 \\
-         0.0 0.0 -1.0 \\
-         0.0 0.0 3.0 \\
-         0.0 0.0 3.0 \\
-         0.0 0.0 3.0 \\
-         0.0 0.0 3.0 \\
-         3300*0.0
+LNONCOLLINEAR = T
+SAXIS = {sstring:s}   # <--- this allows us to change this option later in the code
+MAGMOM = 0.0 0.0 -1.0 168*0.0 # first vector is the Cu
 
 #### magnetism: constraint ####
-I_CONSTRAINED_M = 1
-M_CONSTR =  0.0 0.0 -1.0 \\
-         0.0 0.0 -1.0 \\
-         0.0 0.0 -1.0 \\
-         0.0 0.0 -1.0 \\
-         0.0 0.0 3.0 \\
-         0.0 0.0 3.0 \\
-         0.0 0.0 3.0 \\
-         0.0 0.0 3.0 \\
-         3300*0.0
+I_CONSTRAINED_M = 1 # constrains the spin direction
+M_CONSTR =  0.0 0.0 -1.0 168*0.0
 
-LAMBDA =  10.0
-RWIGS = 1.286 1.302 0.820
+LAMBDA =  10.0   # in the penalty term that aligns spin with target spin
+RWIGS = 1.164 0.741 0.863 0.370 # 1 number for each element, from POTCARs. Order=Cu, N, C, H
 
 #### magnetism: orbital moment ####
 LORBMOM = T
@@ -82,7 +82,7 @@ LORBMOM = T
 #### charge, wavefunction ####
 ISTART = 1
 ICHARG = 0
-LWAVE = F
+LWAVE = FALSE
 LCHARG = F
 LAECHG = F
 LMAXMIX = 4
@@ -95,21 +95,16 @@ EMIN = -15
 EMAX = 10
 LORBIT = 11
 
-#### Partial Charge ####
-#LPARD = T
-#EINT = -5.0000  -4.7355
-#EINT = -4.7355 -4.0500
-
 #### vdW ####
 IVDW = 11
 
-#### LDA+U ####
+#### LDA+U #### recall species are Cu, N, C, H
 LDAU = T
-LDAUTYPE = 2
+LDAUTYPE = 1
 LDAUPRINT = 1
-LDAUL =   2    2   -1  
-LDAUU =   5.5  3.0  0.0
-LDAUJ =   0.0  0.0  0.0
+LDAUL = 2  -1 -1 -1 # turns on DFT+U for d orbital of copper, all others off
+LDAUU = 4.0 0  0  0
+LDAUJ = 1.0 0  0  0
 
 #### HSE ####
 #LHFCALC = T 
@@ -129,125 +124,23 @@ LDAUJ =   0.0  0.0  0.0
 #LDIPOL = T
 #LCALCPOL = T
 #DIPOL = 0.5 0.5 0.5 
-
-### occupation matrix control ###
-#OCCEXT = 1
 """
 
 kpoints = """kpoints
 0
 gamma
- 10  10  8
+1    1   1
  0.0 0.0 0.0
 """
 
-poscar = """
-"""
+#poscar = """""" # need to copy mine here
 
-job_script_mpi = """#!/bin/bash
+# this python code submits a seperate job script for each spin direction
 
-#SBATCH -A m3346
-#SBATCH -J Co3
-#SBATCH -q regular
-#SBATCH -C knl 
-#SBATCH -N 2
-#SBATCH --ntasks-per-node=64
-#SBATCH --time=0-10:00:00 
-#SBATCH --error=error
-#SBATCH --output=output
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=shlufl@ufl.edu
-##SBATCH --dependency=afterok:45514509
- 
-module load vasp/6.2.1-knl
-
-export OMP_NUM_THREADS=1
-
-keep_log
-
-srun -n 128 -c 4 --cpu_bind=cores vasp_ncl 
-"""
-
-job_script_hybrid = """#!/bin/bash
-
-#SBATCH -A m3346
-#SBATCH -J Co3
-#SBATCH -q regular
-#SBATCH -C knl
-#SBATCH -N 4
-#SBATCH --ntasks-per-node=8
-#SBATCH --time=1-00:00:00
-#SBATCH --error=error
-#SBATCH --output=output
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=shlufl@ufl.edu
-##SBATCH --dependency=afterok:45637525
-
-module load vasp/6.1.2-knl
-
-export OMP_NUM_THREADS=8
-
-keep_log
-
-srun -n 32 -c 32 --cpu_bind=cores vasp_ncl
-"""
-
-job_script_hipergator = """#!/bin/bash -l
-
-#SBATCH --account=m2qm-efrc
-#SBATCH --qos=m2qm-efrc-b
-#SBATCH --job-name=Co3
-#SBATCH --mail-type=All
-#SBATCH --mail-user=shlufl@ufl.edu
-#SBATCH --partition=hpg-default
-#SBATCH --nodes=1
-#SBATCH --ntasks=128
-#SBATCH --cpus-per-task=1
-#SBATCH --ntasks-per-socket=16
-#SBATCH --mem=200gb
-#SBATCH --distribution=cyclic:cyclic
-#SBATCH -t 96:00:00
-#SBATCH --err=error
-#SBATCH --output=output
-##SBATCH --dependency=afterok:8190473
-
-module purge
-module load intel/2020.0.166 openmpi/4.1.1
-
-source ~/.bash_aliases; keep_log
-
-srun --mpi=pmix_v2  $HOME/bin/vasp_ncl
-"""
-
-job_script_hpg_gpu = """#!/bin/bash
-
-#SBATCH --job-name=Cr3
-#SBATCH --mem-per-cpu=20gb
-#SBATCH -t 4-00:00:00
-#SBATCH -p gpu --gpus=a100:2
-#SBATCH --account=m2qm-efrc
-#SBATCH --qos=m2qm-efrc
-#SBATCH --nodes=1
-#SBATCH --ntasks=2
-#SBATCH --ntasks-per-node=2
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=shlufl@ufl.edu
-#SBATCH --error=error
-#SBATCH --output=output
-##SBATCH --dependency=afterok:9106099
-
-module purge; module load cuda/11.1.0 nvhpc/20.11 qd/2.3.22 openmpi/4.0.5 fftw/3.3.8
-
-export LD_LIBRARY_PATH=/apps/nvidia/nvhpc/Linux_x86_64/20.11/compilers/extras/qd/lib:$LD_LIBRARY_PATH
-
-source ~/.bash_aliases; keep_log
-
-srun --mpi=pmix /home/shlufl/apps/vasp.6.2.1/bin_gpu/vasp_ncl
-"""
-
+# this uses GPU on perlmutter !!!!
 job_script_perlmutter_1_node = """#!/bin/bash
 #SBATCH -A m3346_g
-#SBATCH -J Cr3
+#SBATCH -J {dir_name:s}
 #SBATCH -C gpu
 #SBATCH -q regular
 #SBATCH -t 6:00:00
@@ -258,25 +151,20 @@ job_script_perlmutter_1_node = """#!/bin/bash
 #SBATCH --gpus-per-task=1
 #SBATCH --ntasks-per-node=4
 #SBATCH --error=error
-#SBATCH --output=output
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=shlufl@ufl.edu
+#SBATCH --output=output # don't change since we need to check this later in code
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=cpbunker@ufl.edu
 ##SBATCH --dependency=afterok:45514509
 
-module load vasp/6.2.1-gpu
+module load vasp/6.4.3-gpu
 
-source ~/.bash_aliases; keep_log
-
-#if [ -f CONTCAR ]; then nl=$(wc -l CONTCAR | awk '{printf "%d", $1}'); if [ $nl -gt 8 ]; then cp CONTCAR POSCAR; else echo "Incomplete CONTCAR"; exit; fi; fi
-#if [ -f STOPCAR ]; then rm STOPCAR; fi
-
-srun -n 4 -c 32 --cpu-bind=cores -G 4 --gpu-bind=single:1 vasp_ncl
+srun -n 4 -c 32 --cpu-bind=cores -G 4 --gpu-bind=none vasp_ncl
 """
 
 job_script_perlmutter_4_nodes = """#!/bin/bash
 
 #SBATCH -A m3346_g
-#SBATCH -J NCO
+#SBATCH -J {dir_name:s}
 #SBATCH -C gpu
 #SBATCH -q regular
 #SBATCH -t 02:00:00
@@ -288,7 +176,7 @@ job_script_perlmutter_4_nodes = """#!/bin/bash
 #SBATCH --error=error
 #SBATCH --output=output
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=shlufl@ufl.edu
+#SBATCH --mail-user=cpbunker@ufl.edu
 ##SBATCH --dependency=afterok:45514509
 
 module load vasp/6.2.1-gpu
@@ -298,13 +186,16 @@ source ~/.bash_aliases; keep_log
 srun -n 16 -c 32 --cpu-bind=cores -G 16 --gpu-bind=single:1 vasp_ncl
 """
 
-job_script = job_script_perlmutter_4_nodes
+job_script = job_script_perlmutter_1_node
+#print(">>> vasp.job:\n", job_script,"\n>>> End vasp.job\n");
 
 emats_file = []
 
 for i in range(100):
     emats_file.append( [[1,0,0],[0,1,0],[0,0,1]] )
 
+# this are the unit vectors that define the reference frame. Since emat = identity, it is just the lab frame
+# would be useful to change if we are tackling two porphyrins with different planes simultaneously 
 emat_file = [ \
     [ 1, 0, 0 ], \
     [ 0, 1, 0 ], \
