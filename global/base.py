@@ -145,6 +145,9 @@ class magmoms:
         self.get_mstring()
 
 class sphere:
+    '''
+    Samples the unit sphere at discrete (\theta, \phi points)
+    '''
     def __init__(self, n_theta=1801, n_phi=3600):
         self.n_theta = n_theta
         self.n_phi = n_phi
