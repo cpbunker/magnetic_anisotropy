@@ -1,6 +1,7 @@
 from os import path
 import sys
 import subprocess
+import numpy as np
 
 # root dir
 root_dir = sys.argv[1];
@@ -189,15 +190,23 @@ srun -n 16 -c 32 --cpu-bind=cores -G 16 --gpu-bind=single:1 vasp_ncl
 job_script = job_script_perlmutter_1_node
 #print(">>> vasp.job:\n", job_script,"\n>>> End vasp.job\n");
 
-emats_file = []
+#emats_file = []
 
-for i in range(100):
-    emats_file.append( [[1,0,0],[0,1,0],[0,0,1]] )
+#for i in range(100):
+#emats_file.append( [[1,0,0],[0,1,0],[0,0,1]] )
 
 # this are the unit vectors that define the reference frame. Since emat = identity, it is just the lab frame
 # would be useful to change if we are tackling two porphyrins with different planes simultaneously 
-emat_file = [ \
-    [ 1, 0, 0 ], \
-    [ 0, 1, 0 ], \
-    [ 0, 0, 1 ] ] 
+emat_file = np.eye(3);
+
+angle_yax = np.pi/2;
+R_yax = np.array([[np.cos(angle_yax), 0          , np.sin(angle_yax)],
+                  [0,                 1,           0],
+                  [-np.sin(angle_yax), 0,          np.cos(angle_yax)]]);
+angle_zax = 2*np.pi/3;
+R_zax = np.array([[np.cos(angle_zax),-np.sin(angle_zax),0],
+                  [np.sin(angle_zax), np.cos(angle_zax),0],
+                  [0,0,1]]);
+emat_file = np.transpose( np.matmul(R_zax,np.matmul(R_yax,emat_file.T) ) );
+
 

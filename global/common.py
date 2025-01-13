@@ -7,7 +7,7 @@ import numpy as np
 import copy
 from ase.io import read, write
 from base import sph2cart, cart2sph, change_frame_sph, get_emat_local, magmoms, sphere
-from data import root_dir, wave_dir, incar, kpoints, job_script, emats_file, emat_file
+from data import root_dir, wave_dir, incar, kpoints, job_script, emat_file
 
 class vasp_job:
 
@@ -175,7 +175,7 @@ class vasp_job_ncl(vasp_job):
         else:
             self.get_input_files(sstring = self.sstring)
 
-    def setup_local_ref_frames(self, z_direction=[0, 0], from_file=False):
+    def setup_local_ref_frames(self, z_direction=[0, 0], from_file=True):
         # Let the sphere of local reference frame be continous.
         # Let the sphere of global reference frame be discrete.
 
@@ -189,8 +189,9 @@ class vasp_job_ncl(vasp_job):
 
     def transform_saxis(self, global2local=True):
         # The local reference frames are defined by self.emat
+        # this method fills in either saxis or saxis_local, from the other one
 
-        if global2local:
+        if global2local: # I typicaly want this option
             self.saxis_local = []
             theta, phi = self.saxis
             dumb, theta, phi = change_frame_sph([1, theta, phi], np.eye(3), self.emat)
@@ -206,7 +207,8 @@ class vasp_job_ncl(vasp_job):
             self.saxis_local = saxis
             self.transform_saxis(global2local=False)
         else:
-            self.saxis = saxis
+            self.saxis = saxis # I want this option
+                               # so that main.py adds global directions, and emats transforms into local
             self.transform_saxis(global2local=True)
 
         saxis_cart = sph2cart([1, self.saxis[0], self.saxis[1]])
@@ -305,6 +307,11 @@ class vasp_jobs_ncl(vasp_job_ncl):
     def get_energies(self, max_energy=0.01, de0=1.e-6):
         self.energies = []
 
+        ematstring = "# Basis vectors";
+        for evec in emat_file:
+            ematstring += "\n# [{:.8f}, {:.8f}, {:.8f}]".format(evec[0], evec[1], evec[2]);
+        ematstring +="\n\n";
+
         ostring1 = ""
         ostring2 = ""
         for i in range(self.n_direction):
@@ -319,6 +326,7 @@ class vasp_jobs_ncl(vasp_job_ncl):
             f.write("# lab reference frame\n")
             f.write(ostring1)
             f.write("\n\n# local reference frame\n")
+            f.write(ematstring);
             f.write(ostring2)
 
     def print_dirs_and_configs(self, local_ref_frame=False):
