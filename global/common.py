@@ -7,7 +7,7 @@ import numpy as np
 import copy
 from ase.io import read, write
 from base import sph2cart, cart2sph, change_frame_sph, get_emat_local, magmoms, sphere
-from data import root_dir, wave_dir, incar, poscar, kpoints, job_script, emats_file, emat_file
+from data import root_dir, wave_dir, incar, kpoints, job_script, emats_file, emat_file
 
 class vasp_job:
 
@@ -16,7 +16,7 @@ class vasp_job:
         self.root_dir = root_dir
         self.dir_name = dir_name
         self.incar = incar
-        self.poscar = poscar
+        #self.poscar = poscar # just doing this direct from folder
         self.kpoints = kpoints
         self.job_script = job_script
         self.e_ref = 0.0
@@ -25,32 +25,49 @@ class vasp_job:
         self.dir_name = dir_name
 
     def create_dir(self):
+        os.chdir(self.root_dir);
         if not os.path.isdir(self.dir_name):
             subprocess.run(["mkdir", "-p", self.dir_name])
 
     def get_input_files(self, sstring="0 0 1"):
+        os.chdir(self.root_dir);
         os.chdir(self.dir_name)
         subprocess.run(["pwd"])
+
+        # INCAR, POSCAR, KPOINTS, POTCAR
         with open("INCAR", "w") as f:
             f.write(incar.format(sstring = sstring))
-        with open("POSCAR", "w") as f:
-            f.write(poscar)
+        subprocess.run(["cp", self.root_dir + "POSCAR", "."]);
         with open("KPOINTS", "w") as f:
             f.write(kpoints)
-        with open("vasp.job", "w") as f:
-            f.write(job_script)
         subprocess.run(["ln", "-sf", self.root_dir + "POTCAR", "."])
-        subprocess.run(["ln", "-sf", self.root_dir + wave_dir + "/WAVECAR", "."])
+        subprocess.run(["grep","ISTART","INCAR"]);
+
+        # link WAVECAR, print job script
+        with open("vasp.job", "w") as f:
+            f.write(job_script.format(dir_name = self.dir_name))
+        if(self.dir_name=="0"):
+            print(">>> vasp.job:\n"); subprocess.run(["cat","vasp.job"]); print("\n>>> End vasp.job\n");
+        else:
+            # this creates a link to root_dir/0/WAVECAR, since wave_dir imported from data.py is 0
+            subprocess.run(["ln", "-sf", self.root_dir + wave_dir + "/WAVECAR", "."])
+
         os.chdir(self.root_dir)
+        return;
 
     def submit_job(self):
+        os.chdir(self.root_dir);
         os.chdir(self.dir_name)
         subprocess.run(["pwd"])
-        subprocess.run(["sbatch", "vasp.job"])
+        subprocess.run(["sbatch", "vasp.job"]) # NB the job script should always be saved as vasp.job
         time.sleep(1)
         os.chdir(self.root_dir)
 
     def check_convergence(self, restart=False, de0=1.e-8):
+        '''
+        Checks if the final change in energy dE resulting from the job is lower than threshhold change in energy de0
+        '''
+        os.chdir(self.root_dir);
         self.convergence = False
         os.chdir(self.dir_name)
         #subprocess.run(["pwd"])
@@ -58,8 +75,8 @@ class vasp_job:
         try:
             out = subprocess.run(["grep", ":", "output"], capture_output=True)
             out = out.stdout.decode("utf-8").split('\n')
-            de = out[-2].split()[3]
-            if abs(float(de)) < de0:
+            de = out[-3].split()[3]  # grabs final change in energy from std out
+            if abs(float(de)) < de0: # convergence this is below the threshhold value
                 self.convergence = True
         except:
             pass
@@ -69,6 +86,7 @@ class vasp_job:
         os.chdir(self.root_dir)
 
     def count_nstep(self):
+        os.chdir(self.root_dir);
         os.chdir(self.dir_name)
         #subprocess.run(["pwd"])
         self.nstep = 0
@@ -85,18 +103,21 @@ class vasp_job:
 
     def get_energy(self, max_energy=0.01, de0=1.e-8):
         self.energy = 0
+        os.chdir(self.root_dir);
         os.chdir(self.dir_name)
         #subprocess.run(["pwd"])
         try:
             out = subprocess.run(["grep", ":", "output"], capture_output=True)
             out = out.stdout.decode("utf-8").split('\n')
-            de = out[-2].split()[3]
+            de = out[-3].split()[3]
+            #print("###### ",de)
             if abs(float(de)) < de0:
                 try:
                     out = subprocess.run(["grep", "sigma", "OUTCAR"], capture_output=True)
                     e = float( out.stdout.decode("utf-8").split()[-1] )
                     # The second last energy which doesn't does not include the vdW interaction.
                     #e = float( out.stdout.decode("utf-8").split("\n")[-3].split()[-1] )
+                    #print("###### ",e)
                     if abs(e - self.e_ref) < max_energy:
                         self.energy = e
                 except:
@@ -106,6 +127,9 @@ class vasp_job:
         os.chdir(self.root_dir)
 
 class vasp_job_ncl(vasp_job):
+    '''
+    For managing a SINGLE spin directions calculation of E(\theta, \phi)
+    '''
     def __init__(self, saxis=[0, 0], n_theta=1801, n_phi=3600):
         super().__init__()
 
@@ -144,6 +168,7 @@ class vasp_job_ncl(vasp_job):
         self.set_sstring(saxis)
 
         self.dir_name = self.get_dir_name(saxis)
+        print("\nin setup_one_job: dir_name =", self.dir_name, ", submit =", submit)
         self.create_dir()
         if submit:
             self.submit_job()
@@ -188,6 +213,9 @@ class vasp_job_ncl(vasp_job):
         self.sstring = "{:10.6f} {:10.6f} {:10.6f}".format(*saxis_cart)
 
 class vasp_jobs_ncl(vasp_job_ncl):
+    '''
+    For managing MANY spin directions at once
+    '''
     def __init__(self, n_theta=1801, n_phi=3600):
         super().__init__(n_theta=n_theta, n_phi=n_phi)
 
@@ -196,6 +224,15 @@ class vasp_jobs_ncl(vasp_job_ncl):
         self.n_direction = len(self.directions)
         self.dir_names = []
         self.energies = []
+
+    def __str__(self):
+        rets = "\n";
+        rets += "*"*40;
+        rets +="\nvasp_jobs_ncl() object:\n{:.0f} noncolinear VASP calculations\n".format(self.n_direction);
+        for name in self.dir_names:
+            rets += name+"\n";
+        rets += "*"*40;
+        return rets;
 
     def get_dir_names(self):
         dir_names = []
@@ -250,8 +287,11 @@ class vasp_jobs_ncl(vasp_job_ncl):
                 self.dir_names.append(dir_name)
                 self.energies.append(0)
 
-    def setup_jobs(self, submit=False):
+    def setup_jobs(self, submit=False, truncate_n_directions = 1e10):
+        os.chdir(self.root_dir);
+        print(">>> setup_jobs");
         for i in range(self.n_direction):
+            if(i >= truncate_n_directions): return; # aborts before submitting all directions
             self.setup_one_job(saxis = self.directions[i], submit=submit)
 
     def check_convergences(self, restart=False, de0=1.e-8):
@@ -284,7 +324,8 @@ class vasp_jobs_ncl(vasp_job_ncl):
     def print_dirs_and_configs(self, local_ref_frame=False):
         # The global reference frame is emat0 = np.eye(3). 
         # The local reference frame is defined by self.emat.
-
+        print(">>> print_dirs_and_configs");
+        print(" THETA |  PHI | NAME");
         ostring = "{:6.1f} {:6.1f} : {:30s}"
 
         if local_ref_frame:
