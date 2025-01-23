@@ -32,6 +32,7 @@ assert("/" not in wave_dir);
 from common import *
 
 def find_global_directions():
+    raise NotImplementedError;
     direction_emin = (71.4,  59.5)
     myjob = vasp_jobs_ncl(n_theta=1801, n_phi=3600)
     myjob.setup_local_ref_frames(z_direction=direction_emin, from_file=False)
@@ -92,8 +93,8 @@ if __name__ == "__main__":
 
     control_dir = os.getcwd();
     convergence_threshold = 1.e-8;
-    reference_energy = -397.66719288;
-    do(int(sys.argv[3]), reference_energy, convergence_threshold); # no idea where these numbers are coming from
+    reference_energy = 0.0;
+    do(int(sys.argv[3]), reference_energy, convergence_threshold);
     os.chdir(control_dir);
     print("**")
     subprocess.run(["pwd"]);

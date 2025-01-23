@@ -1,5 +1,7 @@
 import os
+from os import path
 import sys
+import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -15,10 +17,10 @@ def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, 
     fout = base_name + ".pdf"
 
     if not os.path.isfile(fin):
-        return
+        raise Exception(fin+" does not exist");
     
     energies = np.loadtxt(fin)
-    
+    print(np.shape(energies));
     
     
     ### Data massage
@@ -64,11 +66,14 @@ def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, 
     ax.set_xticks(np.linspace(0, 2*np.pi, 9, endpoint=True), labels=[r"$\phi=0$", r"", r"$\phi=\pi/2$", r"", r"$\phi=\pi$", r"", r"$\phi=3\pi/2$", r"", r""])
     ax.set_yticks(np.linspace(0,   np.pi, 7, endpoint=True), labels=[r"$\theta=0$", r"", r"", r"$\theta=\pi/2$", r"", r"", r"$\theta=\pi$"])
 
-    cm = mpl.colormaps.get_cmap('rainbow')
+    cm = mpl.colormaps['rainbow']
     
     scat = ax.scatter(energies[:,column2], energies[:,column1], s=60, c=energies[:,column3], vmin=emin, vmax=emax, cmap=cm)
     
-    cbar = plt.colorbar(scat, label = r"$E(\theta, \phi)\; (\mathrm{cm}^{-1})$", pad=0.15)
+    if(wavenumber):
+        cbar = plt.colorbar(scat, label = r"$E(\theta, \phi)\; (\mathrm{cm}^{-1})$", pad=0.15)
+    else:
+        cbar = plt.colorbar(scat, label = r"$E(\theta, \phi)\; (\mathrm{eV})$", pad=0.15)
 
     fig.tight_layout()
     
@@ -76,5 +81,15 @@ def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, 
 
 if __name__ == "__main__":
 
-    polar_plot(base_name = "energies", title="", columns=(1,2,3), factor=1, wavenumber=True)
+    # change to working directory
+    existing_dat = sys.argv[1];
+    if(path.exists(existing_dat)): pass
+    else: raise Exception(existing_dat+" must already exist!");
+    #print(">>> pwd");
+    #subprocess.run(["pwd"]);
+    #print(">>> ls "+root_dir);
+    #subprocess.run(["ls", root_dir]);
+
+    # pdf of polar energies
+    polar_plot(base_name = existing_dat[:-4], title="", columns=(1,2,3), factor=1, wavenumber=False)
 
