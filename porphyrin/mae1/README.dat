@@ -1,3 +1,4 @@
 Orientation 1
 POSCAR is taken directly from mae_relax/CONTCAR
 The z axis is in the molecular plane
+It is along a Cu-nitrogen bond, not along the Cu-Cu bond (!!)
