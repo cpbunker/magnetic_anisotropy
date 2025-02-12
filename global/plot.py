@@ -6,8 +6,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+eV2wavenumber = 8065.61;
+eV2meV = 1e3;
+plt.rcParams.update({"font.family":"serif"});
+
 def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, wavenumber=True):
-    # factor: scale factor for the energy. useful when multiple equivalent spins are rotated together.
+    '''
+    Energies from input file are in eV
+    Plot them in either cm^-1 (case wavenumber=True) or meV (case wavenumber=False)
+    factor: scale factor for the energy. useful when multiple equivalent spins are rotated together.
+    '''
 
     columns = np.array(columns, dtype=int) - 1
 
@@ -19,7 +27,7 @@ def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, 
     if not os.path.isfile(fin):
         raise Exception(fin+" does not exist");
     
-    energies = np.loadtxt(fin)
+    energies = np.loadtxt(fin) 
     print(np.shape(energies));
     
     
@@ -36,11 +44,13 @@ def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, 
     for i in range(nconfig):
         if energies[i, column3] == 0.0:
             energies[i, column3] = np.nan
+
+        # handle units. Recall energies are input in eV
         else:
             if wavenumber:
-                energies[i, column3] = 8.06554393738*1000*factor*(energies[i, column3] - emin)
+                energies[i, column3] = factor* eV2wavenumber*(energies[i, column3] - emin)
             else:
-                energies[i, column3] =               1000*factor*(energies[i, column3] - emin)
+                energies[i, column3] = factor* eV2meV*(energies[i, column3] - emin)
     
     emin = np.nanmin(energies[:, column3])
     emax = np.nanmax(energies[:, column3])
@@ -73,7 +83,7 @@ def polar_plot(base_name = "energies", title="", columns=(0, 1, 6), factor=1.0, 
     if(wavenumber):
         cbar = plt.colorbar(scat, label = r"$E(\theta, \phi)\; (\mathrm{cm}^{-1})$", pad=0.15)
     else:
-        cbar = plt.colorbar(scat, label = r"$E(\theta, \phi)\; (\mathrm{eV})$", pad=0.15)
+        cbar = plt.colorbar(scat, label = r"$E(\theta, \phi)\; (\mathrm{meV})$", pad=0.15)
 
     fig.tight_layout()
     
