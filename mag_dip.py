@@ -24,13 +24,15 @@ Joule2eV = 6.241509074460763e+18
 Joule2meV = 6.241509074460763e+21
 meV2wavenumber = 8.06554393738
 Joule2wavenumber = 5.034116567561925e+22 # Joule2meV * meV2wavenumber
-m2Ang = 1e-10;
-Ang2m = 1e10;
+Ang2met = 1e-10;
+Hz2microeV = 4.136e-9
+Hz2GHz = 1e-9;
+meV2microeV = 1e3;
 
 # Spin operators for S = 1/2
 S = [0.5*np.array([[0,1],[1,0]]), 0.5*np.array([[0,-1j],[1j,0]]), 0.5*np.array([[1,0],[0,-1]])]
 
-def get_A(r1, r2):
+def get_A(r1, r2, print_in_GHz = False):
     """
     A: Magnetic dipolar coupling matrix
 
@@ -55,9 +57,11 @@ def get_A(r1, r2):
 
     A = - gamma_1 * gamma_2 * (mu_0 * hbar) / (2*r12_norm**5) * (3*rcircr - r12_norm**2 * np.eye(3))
 
-    print("The magnetic dipolar coupling matrix in Hz is \n"); print(A); print()
-
-    return A
+    if(print_in_GHz):
+        print("The magnetic dipolar coupling matrix in GHz is \n"); print(A*Hz2GHz); print()
+    else:
+        print("The magnetic dipolar coupling matrix in microeV is \n"); print(A*Hz2microeV); print()
+    return A # <- in Hz
 
 def get_H(r1, r2):
     """
@@ -74,14 +78,13 @@ def get_H(r1, r2):
         for j in range(3):
             H = H + A[i, j]*np.kron(S1[i], S2[j])
 
-    #print("The Hamiltonian is"); print(H)
-
-    return H
+    return H # <- in Hz
 
 def get_diff_E_xyz(r1, r2):
     """
     Get the energy difference between the eigenstates of Sx, Sy, and Sz.
     """
+    raise NotImplementedError
 
     eigenvalues_x, eigenvectors_x = np.linalg.eigh(S[0])
     eigenvalues_y, eigenvectors_y = np.linalg.eigh(S[1])
@@ -144,15 +147,15 @@ def get_diff_E_en(r1, r2, en1, en2):
     E_uu = np.dot( np.conjugate(eigenvector_uu), np.matmul(H, eigenvector_uu) )
     E_ud = np.dot( np.conjugate(eigenvector_ud), np.matmul(H, eigenvector_ud) )
     dE_Hz = np.real( E_ud - E_uu )
-    dE_GHz = dE_Hz/10**9
+    dE_GHz = dE_Hz*Hz2GHz
     dE_J =  dE_Hz * h
-    dE_meV = dE_J * Joule2meV
+    dE_microeV = dE_J * Joule2meV*meV2microeV
     dE_wavenumber = dE_J * Joule2wavenumber
 
     print("The energy difference E_ud - E_uu is")
     print("{:12.6f} GHz".format(dE_GHz))
-    print("{:12.5f} meV".format(dE_meV))
-    print("{:12.4f} cm^-1".format(dE_wavenumber))
+    print("{:12.6f} microeV".format(dE_microeV))
+    print("{:12.6f} cm^-1".format(dE_wavenumber))
     print()
 
 def set_z_axis(atoms):
@@ -185,19 +188,35 @@ def set_z_axis(atoms):
 
     return atoms
 
-def do_dimers(vaspfiles, whichatom=3):
+def do_dimers(vaspfiles, whichselect=7):
+    '''
+    For DHP,    use whichselect=4 to select N5, the correct N relative to Cu2
+    For tbutyl, use whichselect=7 to select N8 
+    '''
     for i in range(len(vaspfiles)):
-        print("Examining the system {:s}\n".format(vaspfiles[i]))
+        print("\nExamining the system {:s}\n".format(vaspfiles[i]))
         atoms = read(vaspfiles[i])
         atoms = set_z_axis(atoms)
-        Cu1 = atoms[0].position
-        Cu2 = atoms[1].position
-        # quantization axes ASSUMING a molecular easy plane
-        en1 = atoms[2].position - Cu1; 
+        Cu1 = atoms[0].position # <- in Ang
+        Cu2 = atoms[1].position # <- in Ang
+
+        # grab the nitrogens N1 and N5 for bond directions
+        whichatomstart = 2; # first two atoms are Cu1 and Cu2
+        # For DHP, I verified that cycling through the 4 N atoms ringing each Cu
+        # does not change E_ud-E_uu by more than 0.001 micro eV !!
+        N1 = atoms[whichatomstart].position;
+        Nselected = atoms[whichatomstart+whichselect].position;
+
+        # ASSUMING a molecular easy plane, these bond directions -> quantization axes
+        en1 = N1 - Cu1; 
         en1 = en1 / np.linalg.norm(en1)
-        en2 = atoms[whichatom].position - Cu2; 
+        en2 = Nselected - Cu2; 
         en2 = en2 / np.linalg.norm(en2)
+        outofplane = np.cross( (Cu1-Cu2)/np.linalg.norm(Cu1-Cu2) , en1);
+        outofplane = outofplane / np.linalg.norm(outofplane);
         print("en1 dot en2 = {:.2f}".format(np.dot(en1,en2)));
+        print("en1 outofplane = {:.2f}".format(np.dot(en1,outofplane)));
+        print("en2 outofplane = {:.2f}".format(np.dot(en2,outofplane)));
         if( abs(np.dot(en1,en2)) < 0.5):
             print("en1 dot en2 = {:.2f}".format(np.dot(en1,en2)));
             raise Exception("change argument whichatom to better align quantization axes")
@@ -207,17 +226,28 @@ def do_dimers(vaspfiles, whichatom=3):
         print("The quantization axis for S1 (for vanadium1) is = ", en1)
         print("The quantization axis for S2 (for vanadium2) is = ", en2)
         print()
-        get_diff_E_en(Cu1*m2Ang, Cu2*m2Ang, en1, en2)
+        get_diff_E_en(Cu1*Ang2met, Cu2*Ang2met, en1, en2)
         print("\n")
 
 if __name__ == "__main__":
-    # Reference result for r12 = 3 Ang: 1.9 GHz, 1.9 GHz, and -3.8 GHz in the diagonal matrix elements.
+    # Reference result for r12 = 3 Ang: 1.9 GHz, 1.9 GHz, and -3.8 GHz in the diagonal matrix elements
+    #                              i.e. 7.9mueV, 7.9mueV, and -15.7 mueV
     if(True):
-        ref_amt = (27.51-10.57)
-        print("Examining reference separation of {:.2f} Ang\n".format(ref_amt))
+        ref_amt = (27.5074-10.5561) # <- in ang, for DHP closed
+        ref_amt = (28.2996-11.6003) # <- in ang, for DHP open
+        print("\nExamining reference separation of {:.2f} Ang\n".format(ref_amt))
         r1_ref = [0, 0, 0]
-        r2_ref = [0, 0, ref_amt*m2Ang]
-        quant1_ref = [0,0,1];
-        get_diff_E_en(r1_ref, r2_ref, quant1_ref, quant1_ref)
+        r2_ref = [0, 0, ref_amt*Ang2met]
+
+        # choose the quantization axes
+        quant1_ref = np.array([0,0,1]);
+        # E_ud - E_uu is very sensitive to this choice, see e.g.
+        #quant1_ref = np.array([0,np.sqrt(1/2),np.sqrt(1/2)]);
+        quant2_ref = -1*quant1_ref;
+        print("quant1_ref dot qant2_ref = {:.2f}".format(np.dot(quant1_ref, quant2_ref)));
+
+        # run reference energy
+        get_diff_E_en(r1_ref, r2_ref, quant1_ref, quant1_ref);
+        del ref_amt, r1_ref, r2_ref, quant1_ref, quant2_ref;
 
     do_dimers(sys.argv[1:]);
